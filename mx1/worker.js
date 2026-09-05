@@ -13,7 +13,10 @@ function json(data, status = 200) {
 async function schema(db) {
   await db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS mx1_posts (id TEXT PRIMARY KEY, user_name TEXT NOT NULL, avatar TEXT NOT NULL, caption TEXT NOT NULL, image_url TEXT, likes INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`),
-    db.prepare(`CREATE TABLE IF NOT EXISTS mx1_comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_name TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)`)
+    db.prepare(`CREATE TABLE IF NOT EXISTS mx1_comments (id TEXT PRIMARY KEY, post_id TEXT NOT NULL, user_name TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS mx2_sessions (id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, title TEXT NOT NULL DEFAULT 'محادثة MX2', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS mx2_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'chat', created_at INTEGER NOT NULL)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_mx2_messages_session ON mx2_messages(session_id, created_at)`)
   ]);
 }
 
@@ -57,7 +60,7 @@ async function loadFeed(){try{const r=await fetch('/api/feed');const d=await r.j
 async function publish(){const box=document.getElementById('caption');const caption=box.value.trim();if(!caption)return toast('اكتب نص المنشور أولًا');try{const r=await fetch('/api/posts',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({caption,userName:'مستخدم MX1'})});const d=await r.json();if(!r.ok)throw Error(d.error);box.value='';toast('تم نشر المنشور');loadFeed()}catch(e){toast(e.message||'تعذر النشر')}}
 async function likePost(id,button){button.disabled=true;try{const r=await fetch('/api/posts/'+id+'/like',{method:'POST'});const d=await r.json();if(d.likes!==undefined)document.getElementById('likes-'+id).textContent=d.likes+' إعجاب';button.textContent='♥';button.style.color='#ed4956'}finally{button.disabled=false}}
 const cloudflareServices=[['Workers','التنفيذ والنشر والمسارات والإصدارات','مرتبط — mx1','workers'],['D1','قاعدة البيانات العلاقية','مرتبط — binding D','d1'],['KV','التخزين السريع بالمفاتيح','جاهز للربط','kv'],['R2','تخزين الملفات والكائنات','جاهز للربط','r2'],['Pages','استضافة الواجهات والنشر','متاح','pages'],['DNS','النطاقات والسجلات','متاح','dns'],['Routes','ربط المسارات بالـ Workers','متاح','routes'],['Queues','طوابير المهام','متاح','queues'],['Durable Objects','حالة متسقة وجلسات','متاح','durable-objects'],['Workers AI','نماذج الذكاء الاصطناعي','متاح','workers-ai'],['AI Gateway','بوابة النماذج والمراقبة','متاح','ai-gateway'],['Vectorize','البحث المتجهي','متاح','vectorize'],['Images','تحسين الصور والتحويل','متاح','images'],['Stream','الفيديو والبث','متاح','stream'],['Analytics','تحليلات الويب وWorkers','متاح','analytics'],['Logs & Tail','السجلات والتتبع','متاح','logs'],['Cache','التخزين المؤقت والتنقية','متاح','cache'],['WAF','جدار حماية التطبيقات','متاح','waf'],['Rate Limiting','حدود الطلبات','متاح','rate-limiting'],['Access','التحكم بالوصول','متاح','access'],['Tunnels','الأنفاق والاتصال الخاص','متاح','tunnels'],['Queues & Workflows','المهام الخلفية وسير العمل','متاح','workflows'],['Webhooks','الإشعارات والأحداث','متاح','webhooks'],['Email Routing','توجيه البريد','متاح','email'],['Load Balancing','توزيع الحمل','متاح','load-balancing'],['Browser Rendering','التصيير الآلي','متاح','browser-rendering'],['R2 Data Catalog','فهرسة البيانات','متاح','r2-catalog'],['Secrets Store','حفظ الأسرار','متاح','secrets-store']];function openCloudflare(){const g=document.getElementById('cfGrid');g.innerHTML=cloudflareServices.map(s=>'<div class="cf-item"><b>'+s[0]+'</b><small>'+s[1]+'</small><div class="cf-status">'+s[2]+'</div><a href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">فتح في Cloudflare</a></div>').join('');document.getElementById('cloudflare').style.display='block'}function closeCloudflare(){document.getElementById('cloudflare').style.display='none'}
-const mx2Key='mx2-chat-history';function openMX2(){document.getElementById('mx2').style.display='block';renderMX2()}function closeMX2(){document.getElementById('mx2').style.display='none'}function renderMX2(){const box=document.getElementById('mx2Messages');const h=JSON.parse(localStorage.getItem(mx2Key)||'[]');box.innerHTML=h.length?h.map(m=>'<div class="mx2-msg '+(m.role==='user'?'mx2-user':'mx2-ai')+'">'+esc(m.content)+'</div>').join(''):'<div class="empty">ابدأ محادثة جديدة مع MX2.</div>';box.scrollTop=box.scrollHeight}async function sendMX2(){const input=document.getElementById('mx2Input');const text=input.value.trim();if(!text)return;const mode=document.getElementById('mx2Mode').value;const h=JSON.parse(localStorage.getItem(mx2Key)||'[]');h.push({role:'user',content:text});localStorage.setItem(mx2Key,JSON.stringify(h.slice(-20)));input.value='';renderMX2();try{const r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,messages:h.slice(-12)})});const d=await r.json();if(!r.ok)throw Error(d.error||'تعذر الاتصال بالمساعد');const answer=d.response||d.result||d.text||'لم تصل إجابة.';const next=JSON.parse(localStorage.getItem(mx2Key)||'[]');next.push({role:'assistant',content:answer});localStorage.setItem(mx2Key,JSON.stringify(next.slice(-20)));renderMX2()}catch(e){const next=JSON.parse(localStorage.getItem(mx2Key)||'[]');next.push({role:'assistant',content:'تعذر الاتصال بالمساعد: '+e.message});localStorage.setItem(mx2Key,JSON.stringify(next.slice(-20)));renderMX2()}}
+const mx2Key='mx2-chat-history',mx2OwnerKey='mx2-owner-key',mx2SessionKey='mx2-session-id';function ownerKey(){let k=localStorage.getItem(mx2OwnerKey);if(!k){k=crypto.randomUUID();localStorage.setItem(mx2OwnerKey,k)}return k}async function ensureMX2Session(){let sid=localStorage.getItem(mx2SessionKey);if(sid)return sid;try{const r=await fetch('/api/chat/sessions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ownerKey:ownerKey(),title:'محادثة MX2'})});const d=await r.json();if(r.ok&&d.session){sid=d.session.id;localStorage.setItem(mx2SessionKey,sid);return sid}}catch(e){}return ''}async function saveMX2Cloud(role,content,mode){const sid=await ensureMX2Session();if(!sid)return;try{await fetch('/api/chat/messages',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ownerKey:ownerKey(),sessionId:sid,role,content,mode})})}catch(e){}}async function loadMX2Cloud(){const sid=localStorage.getItem(mx2SessionKey);if(!sid)return;try{const r=await fetch('/api/chat/sessions/'+encodeURIComponent(sid)+'?ownerKey='+encodeURIComponent(ownerKey()));const d=await r.json();if(r.ok&&Array.isArray(d.messages)){localStorage.setItem(mx2Key,JSON.stringify(d.messages.map(m=>({role:m.role,content:m.content,mode:m.mode}))));renderMX2()}}catch(e){}}function openMX2(){document.getElementById('mx2').style.display='block';renderMX2();loadMX2Cloud()}function closeMX2(){document.getElementById('mx2').style.display='none'}function renderMX2(){const box=document.getElementById('mx2Messages');const h=JSON.parse(localStorage.getItem(mx2Key)||'[]');box.innerHTML=h.length?h.map(m=>'<div class="mx2-msg '+(m.role==='user'?'mx2-user':'mx2-ai')+'">'+esc(m.content)+'</div>').join(''):'<div class="empty">ابدأ محادثة جديدة مع MX2.</div>';box.scrollTop=box.scrollHeight}async function sendMX2(){const input=document.getElementById('mx2Input');const text=input.value.trim();if(!text)return;const mode=document.getElementById('mx2Mode').value;const h=JSON.parse(localStorage.getItem(mx2Key)||'[]');h.push({role:'user',content:text,mode});localStorage.setItem(mx2Key,JSON.stringify(h.slice(-20)));await saveMX2Cloud('user',text,mode);input.value='';renderMX2();try{const r=await fetch('/api/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({mode,messages:h.slice(-12)})});const d=await r.json();if(!r.ok)throw Error(d.error||'تعذر الاتصال بالمساعد');const answer=d.response||d.result||d.text||'لم تصل إجابة.';const next=JSON.parse(localStorage.getItem(mx2Key)||'[]');next.push({role:'assistant',content:answer,mode});localStorage.setItem(mx2Key,JSON.stringify(next.slice(-20)));await saveMX2Cloud('assistant',answer,mode);renderMX2()}catch(e){const next=JSON.parse(localStorage.getItem(mx2Key)||'[]');const error='تعذر الاتصال بالمساعد: '+e.message;next.push({role:'assistant',content:error,mode});localStorage.setItem(mx2Key,JSON.stringify(next.slice(-20)));await saveMX2Cloud('assistant',error,mode);renderMX2()}}
 const draftKey='mx1-admin-draft';function openAdmin(){document.getElementById('admin').style.display='block';const d=JSON.parse(localStorage.getItem(draftKey)||'{}');deployMessage.value=d.message||deployMessage.value;deployContent.value=d.content||''}function closeAdmin(){document.getElementById('admin').style.display='none'}function saveDraft(){localStorage.setItem(draftKey,JSON.stringify({message:deployMessage.value,content:deployContent.value}))}async function publishProject(){saveDraft();const status=document.getElementById('deployStatus');status.textContent='جارٍ إرسال طلب النشر…';try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json','authorization':'Bearer '+document.getElementById('adminToken').value},body:JSON.stringify({message:deployMessage.value,content:deployContent.value})});const d=await r.json();status.textContent=d.message||d.error||'تمت العملية';if(r.ok)toast('تم إرسال النشر')}catch(e){status.textContent='تعذر الاتصال بخدمة النشر'}}
 loadFeed();
 </script></body></html>`;
@@ -75,6 +78,47 @@ async function handleApi(request, env, url) {
     const post = { id:id(), user_name:safeText(body.userName, 40) || 'مستخدم MX1', avatar:'', caption, image_url:safeText(body.imageUrl, 1000) || null, likes:0, created_at:Date.now() };
     await env.D.prepare('INSERT INTO mx1_posts(id,user_name,avatar,caption,image_url,likes,created_at) VALUES(?,?,?,?,?,?,?)').bind(post.id,post.user_name,post.avatar,post.caption,post.image_url,post.likes,post.created_at).run();
     return json({post}, 201);
+  }
+  if (url.pathname === '/api/chat/sessions' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const ownerKey = safeText(body.ownerKey, 120);
+    if (!ownerKey) return json({error:'معرّف المالك مطلوب'}, 400);
+    const now = Date.now();
+    const session = {id:id(), owner_key:ownerKey, title:safeText(body.title, 120) || 'محادثة MX2', created_at:now, updated_at:now};
+    await env.D.prepare('INSERT INTO mx2_sessions(id,owner_key,title,created_at,updated_at) VALUES(?,?,?,?,?)').bind(session.id,session.owner_key,session.title,session.created_at,session.updated_at).run();
+    return json({session}, 201);
+  }
+  if (url.pathname === '/api/chat/sessions' && request.method === 'GET') {
+    const ownerKey = safeText(url.searchParams.get('ownerKey'), 120);
+    if (!ownerKey) return json({sessions:[]});
+    const rows = await env.D.prepare('SELECT id,title,created_at,updated_at FROM mx2_sessions WHERE owner_key=? ORDER BY updated_at DESC LIMIT 50').bind(ownerKey).all();
+    return json({sessions:rows.results || []});
+  }
+  const sessionMatch = url.pathname.match(/^\/api\/chat\/sessions\/([^/]+)$/);
+  if (sessionMatch && request.method === 'GET') {
+    const ownerKey = safeText(url.searchParams.get('ownerKey'), 120);
+    const session = await env.D.prepare('SELECT id,title,created_at,updated_at FROM mx2_sessions WHERE id=? AND owner_key=?').bind(sessionMatch[1],ownerKey).first();
+    if (!session) return json({error:'الجلسة غير موجودة'}, 404);
+    const rows = await env.D.prepare('SELECT id,role,content,mode,created_at FROM mx2_messages WHERE session_id=? ORDER BY created_at ASC LIMIT 200').bind(session.id).all();
+    return json({session,messages:rows.results || []});
+  }
+  if (sessionMatch && request.method === 'DELETE') {
+    const ownerKey = safeText(url.searchParams.get('ownerKey'), 120);
+    const session = await env.D.prepare('SELECT id FROM mx2_sessions WHERE id=? AND owner_key=?').bind(sessionMatch[1],ownerKey).first();
+    if (!session) return json({error:'الجلسة غير موجودة'}, 404);
+    await env.D.batch([env.D.prepare('DELETE FROM mx2_messages WHERE session_id=?').bind(session.id),env.D.prepare('DELETE FROM mx2_sessions WHERE id=?').bind(session.id)]);
+    return json({deleted:true});
+  }
+  if (url.pathname === '/api/chat/messages' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const ownerKey = safeText(body.ownerKey, 120), sessionId = safeText(body.sessionId, 80), content = safeText(body.content, 12000);
+    const role = body.role === 'assistant' ? 'assistant' : 'user';
+    if (!ownerKey || !sessionId || !content) return json({error:'بيانات الرسالة ناقصة'}, 400);
+    const session = await env.D.prepare('SELECT id FROM mx2_sessions WHERE id=? AND owner_key=?').bind(sessionId,ownerKey).first();
+    if (!session) return json({error:'الجلسة غير موجودة'}, 404);
+    const message = {id:id(),session_id:sessionId,role,content,mode:safeText(body.mode,20)||'chat',created_at:Date.now()};
+    await env.D.batch([env.D.prepare('INSERT INTO mx2_messages(id,session_id,role,content,mode,created_at) VALUES(?,?,?,?,?,?)').bind(message.id,message.session_id,message.role,message.content,message.mode,message.created_at),env.D.prepare('UPDATE mx2_sessions SET updated_at=? WHERE id=?').bind(message.created_at,sessionId)]);
+    return json({message}, 201);
   }
   if (url.pathname === '/api/ai' && request.method === 'POST') {
     if (!env.AI) return json({error:'Workers AI غير مهيأ لهذا Worker بعد.'}, 503);
