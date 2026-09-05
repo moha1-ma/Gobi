@@ -1,0 +1,11 @@
+name = "mx1"
+main = "worker.js"
+compatibility_date = "2026-09-03"
+
+[[d1_databases]]
+binding = "D"
+database_name = "mx1-d1"
+database_id = "e40c80c6-6129-4f3e-b632-7cbc847cd6e2"
+
+[vars]
+MX1_PUBLIC_URL = "https://mx1.elazzouz4.workers.dev"

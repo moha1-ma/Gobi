@@ -1,0 +1,28 @@
+name: Deploy MX1 to Cloudflare
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mx1/**"
+      - ".github/workflows/deploy-mx1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mx1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: mx1
