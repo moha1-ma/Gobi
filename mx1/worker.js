@@ -19,6 +19,16 @@ async function schema(db) {
 
 function id() { return crypto.randomUUID(); }
 function safeText(value, max) { return String(value ?? "").trim().slice(0, max); }
+function extractAIText(value) {
+  const blocked = new Set(['reasoning_content','prompt','messages','usage','token_ids','logprobs','system_fingerprint','id','request_id','finish_reason','stop_reason']);
+  if (typeof value === 'string') { const text = value.trim(); return /^chatcmpl[-_]/i.test(text) ? '' : text; }
+  if (!value || typeof value !== 'object') return '';
+  const preferred = ['result','choices','output','data','message','content','response','output_text','generated_text','text'];
+  for (const key of preferred) if (value[key] !== undefined && !blocked.has(key)) { const found = extractAIText(value[key]); if (found) return found; }
+  if (Array.isArray(value)) for (const item of value) { const found = extractAIText(item); if (found) return found; }
+  for (const [key, item] of Object.entries(value)) { if (!blocked.has(key) && !preferred.includes(key)) { const found = extractAIText(item); if (found) return found; } }
+  return '';
+}
 
 const landing = `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -72,8 +82,7 @@ async function handleApi(request, env, url) {
     const history = Array.isArray(body.messages) ? body.messages.slice(-12) : [];
     const messages = [{role:'system',content:'أنت مساعد MX2 داخل منصة MX1. أجب بالعربية بوضوح واختصار، وساعد المستخدم في البرمجة وإدارة المنصة.'}, ...history.map(m => ({role:m.role === 'assistant' ? 'assistant' : 'user', content:safeText(m.content, 4000)}))];
     const result = await env.AI.run('@cf/zai-org/glm-4.7-flash', {messages});
-    const answer = result?.response || result?.result?.response || result?.result?.choices?.[0]?.message?.content || result?.result?.choices?.[0]?.text || result?.output_text || result?.text || '';
-    return json({response: typeof answer === 'string' ? answer : JSON.stringify(answer)});
+    return json({response: extractAIText(result) || 'لم تصل إجابة نصية من النموذج.'});
   }
   if (url.pathname === '/api/publish' && request.method === 'POST') {
     if (!env.GITHUB_TOKEN || !env.ADMIN_TOKEN) return json({error:'خدمة النشر غير مهيأة بعد. أضف أسرار GITHUB_TOKEN وADMIN_TOKEN إلى Worker.'}, 503);
