@@ -172,8 +172,17 @@ async function handleApi(request, env, url) {
     const architecture = 'بنية MX1 الحالية: Cloudflare Worker باسم mx1، واجهة عربية داكنة، D1 binding باسم D للمنشورات، Workers AI binding باسم AI، كتالوج Cloudflare داخل الواجهة، ومستودع GitHub هو moha1-ma/Gobi. يجب الحفاظ على الميزات الحالية وعدم كشف الأسرار أو عناوين قواعد البيانات. عمليات الحذف والنشر تحتاج تأكيدًا إداريًا.';
     const system = 'أنت MX2، مهندس برمجيات داخل منصة MX1. '+modeGuide+' '+architecture+' عند طلب تعديل برمجي، استخدم أسماء ملفات ومسارات واضحة، وقدّم كودًا قابلًا للمراجعة، ولا تنفذ أوامر خطرة أو تغيّر الإنتاج دون تأكيد.';
     const messages = [{role:'system',content:system}, ...history.map(m => ({role:m.role === 'assistant' ? 'assistant' : 'user', content:safeText(m.content, 4000)}))];
-    const result = await env.AI.run('@cf/zai-org/glm-4.7-flash', {messages});
-    return json({response: extractAIText(result) || 'لم تصل إجابة نصية من النموذج.'});
+    const aiRoutes = ['@cf/zai-org/glm-4.7-flash','@cf/meta/llama-3.1-8b-instruct','@cf/meta/llama-3.2-3b-instruct','@cf/mistral/mistral-7b-instruct-v0.2','@cf/google/gemma-7b-it','@cf/qwen/qwen1.5-14b-chat-awq','@cf/deepseek-ai/deepseek-math-7b-instruct','@cf/ibm-granite/granite-4.0-h-micro','@cf/aisingapore/gemma-sea-lion-v4-27b-it','@cf/openchat/openchat-3.5-0106'];
+    const failures=[];
+    for (const route of aiRoutes) {
+      try {
+        const result = await Promise.race([env.AI.run(route, {messages}), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000))]);
+        const response = extractAIText(result);
+        if (response) return json({response, failover:true});
+        failures.push(route+':empty');
+      } catch (e) { failures.push(route+':failed'); }
+    }
+    return json({error:'تعذر الحصول على إجابة من مسارات الذكاء الاصطناعي المتاحة. ستتم إعادة المحاولة عند إرسال الطلب مرة أخرى.', failover:true}, 503);
   }
   if (url.pathname === '/api/publish' && request.method === 'POST') {
     if (!env.GITHUB_TOKEN || !env.ADMIN_TOKEN) return json({error:'خدمة النشر غير مهيأة بعد. أضف أسرار GITHUB_TOKEN وADMIN_TOKEN إلى Worker.'}, 503);
