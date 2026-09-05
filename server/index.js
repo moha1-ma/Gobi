@@ -4,12 +4,29 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { askMx1Ai } = require('./aiGateway.cjs');
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
+
+app.post('/api/ai/chat', async (req, res) => {
+  try {
+    const result = await askMx1Ai({
+      provider: req.body?.provider || 'gemini',
+      prompt: req.body?.prompt,
+      locale: req.body?.locale || 'ar',
+      ip: req.ip || req.socket.remoteAddress || 'unknown'
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'AI_UNAVAILABLE';
+    const status = code === 'AI_RATE_LIMIT' ? 429 : code.endsWith('_NOT_CONFIGURED') ? 503 : code === 'PROMPT_REQUIRED' ? 400 : 502;
+    res.status(status).json({ ok: false, code, message: 'تعذر تشغيل المساعد حاليًا.' });
+  }
+});
 
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('MongoDB connected successfully'))
