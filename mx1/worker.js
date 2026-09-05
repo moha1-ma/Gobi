@@ -22,6 +22,9 @@ async function schema(db) {
 
 function id() { return crypto.randomUUID(); }
 function safeText(value, max) { return String(value ?? "").trim().slice(0, max); }
+async function sessionToken(secret, day) { const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), {name:'HMAC',hash:'SHA-256'}, false, ['sign']); const bytes = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode('mx1:'+day)); return [...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+async function isAuthorized(request, env) { if (!env.MX1_PASSWORD) return false; const match = (request.headers.get('Cookie') || '').match(/(?:^|; )mx1_session=([^;]+)/); if (!match) return false; const day = Math.floor(Date.now()/86400000); const current = await sessionToken(env.MX1_PASSWORD, day); const previous = await sessionToken(env.MX1_PASSWORD, day-1); return match[1] === current || match[1] === previous; }
+function loginPage() { return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول MX1</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000;color:#f5f5f5;font-family:Arial,"Noto Sans Arabic",sans-serif}.box{width:min(390px,calc(100% - 36px));background:#121212;border:1px solid #303030;border-radius:16px;padding:28px;box-sizing:border-box;text-align:right}.brand{font:700 32px Georgia,serif;background:linear-gradient(45deg,#fa7e1e,#d62976,#7b2cff);-webkit-background-clip:text;color:transparent;text-align:center;margin-bottom:10px}.hint{color:#aaa;font-size:13px;line-height:1.7}.box input{width:100%;box-sizing:border-box;background:#1d1d1d;border:1px solid #3a3a3a;border-radius:9px;color:#fff;padding:12px;margin:14px 0;font-size:16px}.box button{width:100%;border:0;border-radius:9px;padding:12px;background:#0095f6;color:#fff;font-weight:700;font-size:15px;cursor:pointer}.error{color:#ff7b86;min-height:22px;margin-top:10px;font-size:13px}</style></head><body><form class="box" id="login"><div class="brand">MX1</div><h2>تسجيل الدخول</h2><div class="hint">أدخل كلمة مرور قاعدة تطوير الكود للوصول إلى المنصة.</div><input id="password" type="password" autocomplete="current-password" placeholder="كلمة المرور" autofocus><button>دخول</button><div class="error" id="error"></div></form><script>document.getElementById('login').addEventListener('submit',async function(e){e.preventDefault();const error=document.getElementById('error');error.textContent='جارٍ التحقق…';const r=await fetch('/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:document.getElementById('password').value})});if(r.ok)location.reload();else{error.textContent='كلمة المرور غير صحيحة';document.getElementById('password').select()}})</script></body></html>`; }
 function extractAIText(value) {
   const blocked = new Set(['reasoning_content','prompt','messages','usage','token_ids','logprobs','system_fingerprint','id','request_id','finish_reason','stop_reason']);
   if (typeof value === 'string') { const text = value.trim(); return /^chatcmpl[-_]/i.test(text) ? '' : text; }
@@ -151,7 +154,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, {status:204, headers});
-    if (url.pathname.startsWith('/api/')) return handleApi(request, env, url);
+    if (url.pathname === '/api/auth/login' && request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      if (!env.MX1_PASSWORD || safeText(body.password, 200) !== env.MX1_PASSWORD) return json({error:'كلمة المرور غير صحيحة'}, 401);
+      const token = await sessionToken(env.MX1_PASSWORD, Math.floor(Date.now()/86400000));
+      return new Response(JSON.stringify({ok:true}), {status:200, headers:{...headers,'Set-Cookie':`mx1_session=${token}; Max-Age=86400; Path=/; HttpOnly; Secure; SameSite=Lax`,'content-type':'application/json; charset=utf-8'}});
+    }
+    if (url.pathname.startsWith('/api/')) { if (!(await isAuthorized(request, env))) return json({error:'تسجيل الدخول مطلوب'}, 401); return handleApi(request, env, url); }
+    if (!(await isAuthorized(request, env))) return new Response(loginPage(), {status:200, headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
     return new Response(landing, {headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
   }
 };
