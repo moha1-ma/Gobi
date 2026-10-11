@@ -23,6 +23,6 @@ jobs:
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.secret }}
           accountId: 32e2616bd4b4cba68659ee344ff5c0e4
           workingDirectory: mx1
